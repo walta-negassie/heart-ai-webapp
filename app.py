@@ -2,6 +2,7 @@ from flask import Flask, render_template, request
 import torch
 import torch.nn as nn
 import numpy as np
+import os
 
 app = Flask(__name__)
 
@@ -26,7 +27,7 @@ class HeartNet(nn.Module):
         return self.fc3(x)
 
 # --- load model ---
-checkpoint = torch.load("heart_model.pth", map_location="cpu", weights_only=False)
+checkpoint = torch.load("heart_model.pth", map_location=torch.device("cpu"), weights_only=False)
 
 model = HeartNet(32, 16)
 model.load_state_dict(checkpoint["model_state"])
@@ -41,16 +42,18 @@ def normalize(x):
 def predict(features):
     x = np.array(features, dtype=np.float32)
     x = normalize(x)
-    x = torch.tensor(x, dtype=torch.float32)
+
+    # 🔴 FIX: add batch dimension (VERY IMPORTANT)
+    x = torch.tensor(x, dtype=torch.float32).unsqueeze(0)
 
     with torch.no_grad():
         out = model(x)
-        return torch.argmax(out).item()
+        return torch.argmax(out, dim=1).item()
 
 # --- routes ---
 @app.route('/')
 def home():
-    return render_template("index.html")
+    return render_template("index.html", prediction=None)
 
 @app.route('/predict', methods=['POST'])
 def predict_route():
@@ -74,5 +77,7 @@ def predict_route():
 
     return render_template("index.html", prediction=result)
 
+# --- run app ---
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
